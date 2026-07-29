@@ -15,6 +15,7 @@ import datetime
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
 from src.data.build_dataset import load_info
 from src.utils.logger import get_logger
@@ -43,6 +44,9 @@ def main():
         "(overrides use_optuna in the config file)",
     )
     args = parser.parse_args()
+
+    # Picks up WANDB_API_KEY and friends for the loggers RF-DETR enables.
+    load_dotenv()
 
     info = load_info(args.data_version_dir)
     dataset_dir = Path(args.data_version_dir) / "dataset"

@@ -21,6 +21,7 @@ import datetime
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
 from src.data.build_dataset import load_info
 from src.release import publish, summarize
@@ -55,6 +56,10 @@ def main():
     parser.add_argument("--no-github", action="store_true", help="Upload to GCS only; write the notes to disk without calling gh")
     parser.add_argument("--dry-run", action="store_true", help="Build the table and notes, upload nothing, release nothing")
     args = parser.parse_args()
+
+    # GOOGLE_APPLICATION_CREDENTIALS lives in .env, and the GCS client reads it from
+    # the environment.
+    load_dotenv()
 
     config = load_yaml(args.config)
     gcs_cfg, gh_cfg = config.get("gcs", {}), config.get("github", {})
