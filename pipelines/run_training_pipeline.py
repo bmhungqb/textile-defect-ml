@@ -6,7 +6,7 @@ import datetime
 
 import yaml
 
-from logger import get_logger
+from utils.logger import get_logger
 from training import train
 
 logger = get_logger(__name__)
