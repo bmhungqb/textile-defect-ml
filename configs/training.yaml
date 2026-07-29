@@ -1,0 +1,45 @@
+# Training pipeline config — see pipelines/run_training_pipeline.py.
+
+model: RFDETRMedium
+output_dir: "experiments" 
+
+project_name: "textile-defect-detection"
+weighted_dataloader: true
+
+pretrain_weights: "weights/auto_training_data4training_distill_weights_last.ckpt"
+
+# Used when use_optuna is false — single fixed-config training run.
+fixed_params:
+  lr: 1e-4
+  lr_encoder: 1e-5
+  lr_vit_layer_decay: 0.8
+  lr_component_decay: 0.7
+  weight_decay: 1e-4
+  warmup_epochs: 0
+  ema_decay: 0.993
+  lr_scheduler: cosine
+  cls_loss_coef: 1.0
+  bbox_loss_coef: 5.0
+  giou_loss_coef: 2.0
+  epochs: 40
+  batch_size: 4
+  grad_accum_steps: 4
+
+# Used when use_optuna is true.
+optuna:
+  n_trials: 20
+  search_space:
+    lr: {low: 1e-5, high: 5e-4, log: true}
+    lr_encoder: {low: 1e-6, high: 1e-4, log: true}
+    lr_vit_layer_decay: {low: 0.6, high: 0.95}
+    lr_component_decay: {low: 0.5, high: 0.9}
+    weight_decay: {low: 1e-5, high: 1e-3, log: true}
+    warmup_epochs: {low: 0, high: 5}
+    ema_decay: {low: 0.99, high: 0.9999, log: true}
+    lr_scheduler: {choices: [step, cosine]}
+    cls_loss_coef: {low: 0.5, high: 3.0}
+    bbox_loss_coef: {low: 2.0, high: 8.0}
+    giou_loss_coef: {low: 1.0, high: 4.0}
+  epochs: 40
+  batch_size: 4
+  grad_accum_steps: 4
