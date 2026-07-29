@@ -19,25 +19,27 @@ def run_training(
     weighted_dataloader: bool,
     project_name: str,
     run_name: str,
+    pretrain_weights: str | None = None,
 ) -> str:
     """Run a single RF-DETR training with the given hyperparameters.
 
     Args:
-        params: hyperparameters
+        params: training hyperparameters, all of which must be TrainConfig fields
         dataset_dir: path to the dataset directory
         output_dir: path to the output directory
         weighted_dataloader: whether to use a weighted dataloader to handle class imbalance (requires training.dataloader.WeightedRFDETRDataModule)
         project_name: the name of the Weights & Biases project
         run_name: this run's wandb run name (e.g. "run_<timestamp>" or "run_<timestamp>/trial_<n>")
+        pretrain_weights: optional checkpoint to initialize from (a model-level option)
     Returns:
         path to output_dir
     """
-    model_kwargs = {k: v for k, v in params.items() if k not in ("epochs", "batch_size", "grad_accum_steps")}
-    model_kwargs["output_dir"] = output_dir
+    model = RFDETRMedium(**({"pretrain_weights": pretrain_weights} if pretrain_weights else {}))
 
-    model = RFDETRMedium(
-        **model_kwargs,
+    train_kwargs = dict(
+        params,
         dataset_dir=dataset_dir,
+        output_dir=output_dir,
         log_per_class_metrics=True,
         wandb=True,
         tensorboard=True,
@@ -50,27 +52,13 @@ def run_training(
         from rfdetr import RFDETRModelModule, build_trainer
         from rfdetr.config import TrainConfig
 
-        train_config = TrainConfig(
-            dataset_dir=dataset_dir,
-            output_dir=output_dir,
-            epochs=params["epochs"],
-            batch_size=params["batch_size"],
-            grad_accum_steps=params["grad_accum_steps"],
-            wandb=True,
-            tensorboard=True,
-            project=project_name,
-            run=run_name,
-        )
+        train_config = TrainConfig(**train_kwargs)
         module = RFDETRModelModule(model_config=model.model_config, train_config=train_config)
         datamodule = WeightedRFDETRDataModule(model_config=model.model_config, train_config=train_config)
         trainer = build_trainer(train_config, model.model_config)
         trainer.fit(module, datamodule)
     else:
-        model.train(
-            epochs=params["epochs"],
-            batch_size=params["batch_size"],
-            grad_accum_steps=params["grad_accum_steps"],
-        )
+        model.train(**train_kwargs)
 
     return str(Path(output_dir))
 
@@ -134,6 +122,7 @@ def train(config: dict, run_id: str) -> str:
         weighted_dataloader=config.get("weighted_dataloader", False),
         project_name=config.get("project_name", "textile-defect-detection"),
         run_name=run_name,
+        pretrain_weights=config.get("pretrain_weights"),
     )
 
 
@@ -167,6 +156,7 @@ def train_with_optuna(config: dict, run_id: str) -> optuna.Study:
             weighted_dataloader=config.get("weighted_dataloader", False),
             project_name=config.get("project_name", "textile-defect-detection"),
             run_name=trial_name,
+            pretrain_weights=config.get("pretrain_weights"),
         )
         return _best_epoch_objectives(output_dir)
 
