@@ -38,7 +38,7 @@ class WeightedRFDETRDataModule(RFDETRDataModule):
 
     def train_dataloader(self) -> DataLoader[Any]:
         dataset = self._dataset_train
-        batch_size = self._resolve_batch_size()
+        batch_size = self.train_config.batch_size
         effective_batch_size = batch_size * self.train_config.grad_accum_steps
 
         weights = self._compute_image_weights(dataset)
