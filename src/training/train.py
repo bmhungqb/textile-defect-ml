@@ -7,7 +7,7 @@ import optuna
 import pandas as pd
 from rfdetr import RFDETRMedium
 
-from utils.logger import get_logger
+from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -46,7 +46,7 @@ def run_training(
     )
 
     if weighted_dataloader:
-        from training.dataloader import WeightedRFDETRDataModule
+        from src.training.dataloader import WeightedRFDETRDataModule
         from rfdetr import RFDETRModelModule, build_trainer
         from rfdetr.config import TrainConfig
 
