@@ -5,7 +5,7 @@ model: RFDETRMedium
 project_name: "textile-defect-detection"
 weighted_dataloader: true
 
-pretrain_weights: "weights/auto_training_data4training_distill_weights_last.ckpt"
+pretrain_weights: ""
 
 # Used when use_optuna is false — single fixed-config training run.
 # Every key here must be a TrainConfig field (rfdetr.config.TrainConfig).
@@ -21,13 +21,30 @@ fixed_params:
   ema_decay: 0.993
   lr_scheduler: cosine
   cls_loss_coef: 1.0
-  epochs: 40
+  epochs: 50
   batch_size: 4
   grad_accum_steps: 4
+  # Stop once val/ema_mAP_50_95 has not improved by min_delta for `patience` epochs.
+  early_stopping: true
+  early_stopping_patience: 5
+  early_stopping_min_delta: 0.001
+  early_stopping_use_ema: true
 
 # Used when use_optuna is true.
 optuna:
-  n_trials: 20
+  n_trials: 5
+
+  # Applied to every trial — everything the search does not tune. Lower
+  # early_stopping_patience here to cut the wall-clock cost of a search.
+  fixed_params:
+    epochs: 50
+    batch_size: 4
+    grad_accum_steps: 4
+    early_stopping: true
+    early_stopping_patience: 5
+    early_stopping_min_delta: 0.001
+    early_stopping_use_ema: true
+
   search_space:
     lr: {low: 1.0e-5, high: 5.0e-4, log: true}
     lr_encoder: {low: 1.0e-6, high: 1.0e-4, log: true}
@@ -38,6 +55,3 @@ optuna:
     ema_decay: {low: 0.99, high: 0.9999, log: true}
     lr_scheduler: {choices: [step, cosine]}
     cls_loss_coef: {low: 0.5, high: 3.0}
-  epochs: 40
-  batch_size: 4
-  grad_accum_steps: 4

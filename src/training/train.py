@@ -168,11 +168,23 @@ def train_with_optuna(config: dict, run_id: str) -> Path:
     optuna_cfg = config["optuna"]
     experiment_name = f"experiment_{run_id}"
 
+    search_space = optuna_cfg["search_space"]
+    trial_params = optuna_cfg.get("fixed_params")
+    if trial_params is None:
+        raise ValueError(
+            "optuna.fixed_params is missing from the training config — it holds every "
+            "TrainConfig field the search does not tune (epochs, batch_size, "
+            "grad_accum_steps, early stopping). See configs/training.yaml."
+        )
+
+    # A key in both blocks would have the tuned value silently overwritten by the fixed
+    # one (or vice versa), which is invisible in the results.
+    overlap = sorted(set(trial_params) & set(search_space))
+    if overlap:
+        raise ValueError(f"optuna.fixed_params and optuna.search_space both set: {overlap}")
+
     def objective(trial: optuna.trial.Trial):
-        params = _suggest_params(trial, optuna_cfg["search_space"])
-        params["epochs"] = optuna_cfg["epochs"]
-        params["batch_size"] = optuna_cfg["batch_size"]
-        params["grad_accum_steps"] = optuna_cfg["grad_accum_steps"]
+        params = {**trial_params, **_suggest_params(trial, search_space)}
 
         trial_name = f"{experiment_name}/trial_{trial.number}"
         output_dir = str(Path(config["output_dir"]) / trial_name)

@@ -137,6 +137,11 @@ Tunables in [configs/training.yaml](configs/training.yaml):
 | `pretrain_weights` | checkpoint to initialize from; blank → RF-DETR defaults |
 | `fixed_params` | hyperparameters for a single run — every key must be a `rfdetr.config.TrainConfig` field |
 | `optuna.n_trials`, `optuna.search_space` | the search |
+| `optuna.fixed_params` | applied to every trial — everything the search doesn't tune. A key present in both blocks is rejected at startup |
+
+Early stopping is on for both paths (`early_stopping: true`, patience 10, min delta
+0.001, tracking the EMA metric `val/ema_mAP_50_95`). Lower `early_stopping_patience`
+under `optuna.fixed_params` to shorten a search.
 
 ⚠️ Write exponents with the decimal point (`1.0e-4`, **not** `1e-4`). PyYAML parses the
 bare form as a *string*, which silently breaks the optimizer.
