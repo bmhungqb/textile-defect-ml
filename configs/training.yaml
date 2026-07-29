@@ -1,7 +1,6 @@
 # Training pipeline config — see pipelines/run_training_pipeline.py.
 
 model: RFDETRMedium
-output_dir: "experiments" 
 
 project_name: "textile-defect-detection"
 weighted_dataloader: true
@@ -13,15 +12,15 @@ pretrain_weights: "weights/auto_training_data4training_distill_weights_last.ckpt
 # Note: exponents need the decimal point (1.0e-4, not 1e-4) — PyYAML parses
 # the bare form as a *string*, which silently breaks the optimizer.
 fixed_params:
-  # lr: 1.0e-4
-  # lr_encoder: 1.0e-5
-  # lr_vit_layer_decay: 0.8
-  # lr_component_decay: 0.7
-  # weight_decay: 1.0e-4
-  # warmup_epochs: 0
-  # ema_decay: 0.993
-  # lr_scheduler: cosine
-  # cls_loss_coef: 1.0
+  lr: 1.0e-4
+  lr_encoder: 1.0e-5
+  lr_vit_layer_decay: 0.8
+  lr_component_decay: 0.7
+  weight_decay: 1.0e-4
+  warmup_epochs: 0
+  ema_decay: 0.993
+  lr_scheduler: cosine
+  cls_loss_coef: 1.0
   epochs: 40
   batch_size: 4
   grad_accum_steps: 4

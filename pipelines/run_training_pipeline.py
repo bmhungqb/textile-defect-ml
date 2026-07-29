@@ -1,11 +1,22 @@
 """Phase 2 entrypoint: Run the training pipeline for a single run or an Optuna hyperparameter search.
+
+Takes a dataset version folder built by pipelines/run_data_pipeline.py and writes
+this experiment inside it, so every experiment stays attached to the data it was
+trained on:
+
+    output/<version>/info.json
+                    /dataset/                        # what this experiment trains on
+                    /experiment_<datetime>/          # single run
+                    /experiment_<datetime>/trial_<n> # Optuna search
 """
 
 import argparse
 import datetime
+from pathlib import Path
 
 import yaml
 
+from src.data.build_dataset import load_info
 from src.utils.logger import get_logger
 from src.training import train
 
@@ -18,12 +29,11 @@ def load_yaml(path: str) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "dataset_dir",
-        help="Path to a materialized dataset folder with train/valid/test "
-        "subdirs, each containing _annotations.coco.json (see "
-        "pipelines/run_data_pipeline.py)",
+        "data_version_dir",
+        help="Path to a dataset version folder, e.g. output/v20260729_145230 — it holds "
+        "info.json and dataset/ (see pipelines/run_data_pipeline.py)",
     )
     parser.add_argument("--config", default="configs/training.yaml")
     parser.add_argument(
@@ -34,13 +44,24 @@ def main():
     )
     args = parser.parse_args()
 
+    info = load_info(args.data_version_dir)
+    dataset_dir = Path(args.data_version_dir) / "dataset"
+    if not dataset_dir.is_dir():
+        raise SystemExit(f"No dataset/ folder in {args.data_version_dir} — rerun the data pipeline")
+
     config = load_yaml(args.config)
-    config["dataset_dir"] = args.dataset_dir
+    config["dataset_dir"] = str(dataset_dir)
+    config["data_version"] = info["version"]
+    # Experiments live inside the dataset version they were trained on.
+    config["output_dir"] = args.data_version_dir
     if args.optuna:
         config["use_optuna"] = True
 
     run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    logger.info(f"Run {run_id} -> {config['output_dir']}")
+    logger.info(
+        f"Experiment {run_id} on dataset version {info['version']} "
+        f"({info['totals']['images']} images) -> {config['output_dir']}"
+    )
 
     if config.get("use_optuna", False):
         model_dir = train.train_with_optuna(config, run_id)

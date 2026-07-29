@@ -52,3 +52,41 @@ def download_blobs(uris: list[str], dest_dir: str, workers: int = 16) -> dict[st
 
     logger.info(f"Downloaded {len(downloaded)}/{len(uris)} blobs to {dest_dir}")
     return downloaded
+
+
+def upload_files(paths: list[str], dest_uri: str, base_dir: str | None = None, workers: int = 8) -> dict[str, str]:
+    """Upload local files under a gs:// prefix.
+
+    Args:
+        paths: local file paths to upload
+        dest_uri: destination prefix, e.g. gs://bucket/models/textile/v1.0.0
+        base_dir: if given, each file keeps its path relative to base_dir under
+            dest_uri; otherwise files land flat under dest_uri by file name
+        workers: number of threads to use for parallel uploads
+    Returns:
+        {local_path: gs_uri} for the files that uploaded successfully
+    """
+    bucket_name, prefix = parse_gs_uri(dest_uri.rstrip("/"))
+    bucket = storage.Client().bucket(bucket_name)
+
+    def _upload_one(path: str) -> tuple[str, str]:
+        local = Path(path)
+        rel = local.relative_to(base_dir).as_posix() if base_dir else local.name
+        blob_path = f"{prefix}/{rel}"
+        bucket.blob(blob_path).upload_from_filename(str(local))
+        return path, f"gs://{bucket_name}/{blob_path}"
+
+    uploaded: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_upload_one, p): p for p in paths}
+        for future in as_completed(futures):
+            path = futures[future]
+            try:
+                path, uri = future.result()
+                uploaded[path] = uri
+                logger.info(f"Uploaded {path} -> {uri}")
+            except Exception as e:
+                logger.warning(f"Failed to upload {path}: {e}")
+
+    logger.info(f"Uploaded {len(uploaded)}/{len(paths)} files to {dest_uri}")
+    return uploaded

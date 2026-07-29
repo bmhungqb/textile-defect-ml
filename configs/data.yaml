@@ -13,4 +13,9 @@ defect_classes:
   3: nep_nhan
   4: bo_qua
 
-dataset_dir: "dataset"
+# Root holding every dataset version. Each pull creates output/<version>/ with
+# info.json, the dataset itself, and later the training experiments run against it.
+output_dir: "output"
+
+# Version label for the next pull. Blank -> v<timestamp>, e.g. v20260729_145230.
+version: "v1"

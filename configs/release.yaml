@@ -1,0 +1,19 @@
+# Release pipeline config — see pipelines/run_release_pipeline.py.
+gcs:
+  bucket: "textile-datasets"          # <- set me, e.g. "we-aicore-models" (no gs:// prefix)
+  prefix: "textile-defect-models/VV"
+
+# Metric the best run is picked on: F1 | mAP50 | ema_mAP50 | recall.
+select_by: F1
+
+upload:
+  # false -> publish only checkpoint_best_*.pth, metrics.csv, params.json,
+  #          training_config.json (see release.summarize.RELEASE_FILES).
+  # true  -> publish the whole run folder, including the last-epoch
+  #          checkpoint.pth with optimizer state (much larger).
+  full: false
+
+github:
+  repo: ""            # blank -> read <owner>/<repo> from the git origin remote
+  tag_prefix: "model-"
+  draft: true         # release is created as a draft; --publish overrides
