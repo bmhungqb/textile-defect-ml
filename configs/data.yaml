@@ -1,0 +1,16 @@
+# Data pipeline config — see pipelines/run_data_pipeline.py
+
+label_studio:
+  url: "${LABEL_STUDIO_URL}"
+  api_key: "${LABEL_STUDIO_API_KEY}"
+  project_id: 27
+
+# COCO category_id -> class name, as labelled in Label Studio
+defect_classes:
+  0: cham_do
+  1: loi_soi
+  2: nep_gap_vai
+  3: nep_nhan
+  4: bo_qua
+
+dataset_dir: "dataset"
