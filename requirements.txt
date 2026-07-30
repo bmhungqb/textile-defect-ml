@@ -1,0 +1,35 @@
+# textile-defect-ml dependencies
+#
+#   python3.12 -m venv .venv
+#   source .venv/bin/activate
+#   pip install -r requirements.txt
+#
+# Requires Python 3.11 or 3.12.
+# Versions verified working: rfdetr 1.8.3, torch 2.13.0, torchvision 0.28.0,
+# optuna 3.6.2, label-studio-sdk 1.0.20, pandas 2.3.3, numpy 2.5.1.
+
+# Model + training. The [train,loggers] extras pull in torchvision, wandb,
+# tensorboard and the COCO eval tooling RF-DETR needs.
+rfdetr[train,loggers]
+torch>=2.0
+
+# Hyperparameter search
+optuna>=3.6,<4.0
+
+# Annotation source
+label-studio-sdk>=1.0,<2.0
+
+# Config + environment
+python-dotenv>=1.0,<2.0
+pyyaml>=6.0
+
+# Experiment tables and release notes
+pandas>=2.0
+tabulate>=0.9
+
+# Model artifact storage
+google-cloud-storage>=2.0
+
+# The project itself, so `from src.data... import ...` resolves when running
+# the pipeline scripts. Keep this last.
+-e .

@@ -31,11 +31,22 @@ output/v20260729_145230/
 
 ## 1. Setup (once)
 
-Requires Python 3.11–3.12 and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.11 or 3.12. Create a virtual environment and install the dependencies:
 
 ```bash
-uv sync                    # creates .venv and installs everything
+python3.12 -m venv .venv          # or python3.11
+source .venv/bin/activate         # Windows: .venv\Scripts\activate
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
+
+The last line of [requirements.txt](requirements.txt) is `-e .`, which installs this
+project into the environment — that's what lets the scripts in `pipelines/` do
+`from src.data... import ...` regardless of where you launch them from.
+
+Activate the environment (`source .venv/bin/activate`) in every new shell before running
+any of the commands below, or call the interpreter by path
+(`.venv/bin/python pipelines/...`).
 
 Create `.env` from the template and fill it in:
 
@@ -83,7 +94,7 @@ Pulls reviewed tasks from Label Studio, splits them by each image's own `split` 
 downloads the images from GCS, and writes `info.json`.
 
 ```bash
-uv run python pipelines/run_data_pipeline.py --version v1
+python pipelines/run_data_pipeline.py --version v1
 ```
 
 | flag        | meaning                                                                                             |
@@ -114,13 +125,13 @@ you like per version.
 **Single run** with the fixed hyperparameters in `fixed_params`:
 
 ```bash
-uv run python pipelines/run_training_pipeline.py output/v1
+python pipelines/run_training_pipeline.py output/v1
 ```
 
 **Optuna search** (multi-objective over mAP50 / recall / F1, `optuna.n_trials` trials):
 
 ```bash
-uv run python pipelines/run_training_pipeline.py output/v1 --optuna
+python pipelines/run_training_pipeline.py output/v1 --optuna
 ```
 
 | flag       | meaning                                                                     |
@@ -177,13 +188,13 @@ select_by: F1        # or mAP50 | ema_mAP50 | recall
 Preview without touching anything — prints the table and the exact release notes:
 
 ```bash
-uv run python pipelines/run_release_pipeline.py output/v1 -m "Baseline after re-labelling nep_nhan." --dry-run
+python pipelines/run_release_pipeline.py output/v1 -m "Baseline after re-labelling nep_nhan." --dry-run
 ```
 
 Then release for real:
 
 ```bash
-uv run python pipelines/run_release_pipeline.py output/v1 -m "Baseline after re-labelling nep_nhan."
+python pipelines/run_release_pipeline.py output/v1 -m "Baseline after re-labelling nep_nhan."
 ```
 
 | flag              | meaning                                                                            |
@@ -222,13 +233,15 @@ Releasing the same dataset version twice needs a distinct version, e.g.
 ## Full example
 
 ```bash
-uv sync && cp .env.example .env         # fill in .env
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env                    # fill in .env
 
-uv run python pipelines/run_data_pipeline.py --version v1
-uv run python pipelines/run_training_pipeline.py output/v1 --optuna
-uv run python pipelines/run_training_pipeline.py output/v1     # another experiment, same data
-uv run python pipelines/run_release_pipeline.py output/v1 -m "First release" --dry-run
-uv run python pipelines/run_release_pipeline.py output/v1 -m "First release"
+python pipelines/run_data_pipeline.py --version v1
+python pipelines/run_training_pipeline.py output/v1 --optuna
+python pipelines/run_training_pipeline.py output/v1     # another experiment, same data
+python pipelines/run_release_pipeline.py output/v1 -m "First release" --dry-run
+python pipelines/run_release_pipeline.py output/v1 -m "First release"
 ```
 
 The release body's comparison table looks like this, with the released run in **bold**:
@@ -248,6 +261,7 @@ means a single fixed-config experiment rather than an Optuna trial.
 
 | path                                 | what it is                                                        |
 | ------------------------------------ | ------------------------------------------------------------------ |
+| `requirements.txt`                   | everything `pip install -r` needs, including `-e .`               |
 | `pipelines/run_data_pipeline.py`     | Label Studio + GCS → `output/<version>/`                          |
 | `pipelines/run_training_pipeline.py` | one experiment against a dataset version                          |
 | `pipelines/run_release_pipeline.py`  | compare experiments → GCS → GitHub release                        |
@@ -268,6 +282,7 @@ switch model size.
 
 | symptom                                                    | fix                                                                                        |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `ModuleNotFoundError: No module named 'src'`               | the venv isn't active, or `-e .` never installed — rerun `pip install -r requirements.txt`   |
 | `No info.json in …`                                        | you passed a plain folder; pass a dataset version folder built by the data pipeline         |
 | `No dataset/ folder in …`                                  | the data pipeline didn't finish — rerun it                                                  |
 | `No experiment_* folders under …`                          | nothing has trained against this version yet                                                |
