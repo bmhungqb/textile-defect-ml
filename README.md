@@ -14,15 +14,15 @@ Everything belonging to a dataset version lives in one folder:
 ```
 output/v20260729_145230/
 ├── info.json                        # version, provenance, class distribution per split
-├── raw_annotations.json             # what Label Studio returned
+├── label_studio_tasks.json          # the task export, exactly as downloaded
+├── raw_annotations.json             # that export converted to COCO
 ├── dataset/
 │   ├── train/ valid/ test/          # images + _annotations.coco.json (RF-DETR layout)
 │   └── train.json val.json test.json
-├── experiment_20260729_150000/      # Optuna search
-│   ├── optuna.db
-│   ├── trial_0/ … trial_19/         # params.json, metrics.csv, checkpoints
-├── experiment_20260730_090000/      # single fixed-config run
-│   ├── params.json, metrics.csv, checkpoints
+├── experiment_20260729_150000_trial_0/   # Optuna search: one folder per trial
+│   …                                     # params.json, metrics.csv, checkpoints
+├── experiment_20260729_150000_trial_19/
+├── experiment_20260730_090000/           # single fixed-config run
 ├── experiments.md / experiments.csv # comparison table (written at release time)
 ├── release.json / RELEASE_NOTES.md
 ```
@@ -137,7 +137,7 @@ Tunables in [configs/training.yaml](configs/training.yaml):
 | `pretrain_weights` | checkpoint to initialize from; blank → RF-DETR defaults |
 | `fixed_params` | hyperparameters for a single run — every key must be a `rfdetr.config.TrainConfig` field |
 | `optuna.n_trials`, `optuna.search_space` | the search |
-| `optuna.fixed_params` | applied to every trial — everything the search doesn't tune. A key present in both blocks is rejected at startup |
+| `optuna.fixed_params` | applied to every trial — everything the search doesn't tune. If a key is in both blocks, the tuned value wins |
 
 Early stopping is on for both paths (`early_stopping: true`, patience 10, min delta
 0.001, tracking the EMA metric `val/ema_mAP_50_95`). Lower `early_stopping_patience`
@@ -146,12 +146,17 @@ under `optuna.fixed_params` to shorten a search.
 ⚠️ Write exponents with the decimal point (`1.0e-4`, **not** `1e-4`). PyYAML parses the
 bare form as a *string*, which silently breaks the optimizer.
 
+Every run — a single run or one Optuna trial — gets its own top-level folder in the
+dataset version: `experiment_<datetime>/` or `experiment_<datetime>_trial_<n>/`.
+
 **Output per run:** `checkpoint_best_total.pth` (best of regular vs EMA, optimizer state
 stripped — this is the one you serve), `checkpoint_best_ema.pth`,
 `checkpoint_best_regular.pth`, `checkpoint.pth` (last epoch, large), `metrics.csv`,
-`params.json`. An Optuna search also leaves `optuna.db` in the experiment folder, so the
-trial history survives a crash — note that rerunning the command starts a *new*
-`experiment_<datetime>` with a fresh study rather than continuing the old one.
+`params.json`. Each run's results are read back from its own `metrics.csv`, so a search
+that dies partway still leaves every finished trial releasable.
+
+**In wandb:** each run logs separately, named after its folder
+(`experiment_<datetime>` or `experiment_<datetime>_trial_<n>`).
 
 ---
 
@@ -198,8 +203,10 @@ checkpoint — a crashed trial with a great score can't be released. The metric 
 run is read from its `metrics.csv` at the epoch with the best `val/F1`.
 
 **What lands in GCS** (`gs://<bucket>/<prefix>/<version>/`): the winning run's
-checkpoints, `metrics.csv`, `params.json`, plus the version's `info.json`,
-`experiments.csv`, `experiments.md` and `release.json`.
+checkpoints, `metrics.csv`, `params.json`, plus the dataset version's `info.json` and
+`label_studio_tasks.json`, and the `experiments.csv`, `experiments.md` and
+`release.json` for the release. A version folder with no `label_studio_tasks.json`
+(built before it was kept) logs a warning and publishes the rest.
 
 **What lands on GitHub:** a draft release tagged `model-<version>` containing only
 Markdown — your message, the headline metrics, the dataset distribution table, the

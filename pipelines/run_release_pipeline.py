@@ -1,4 +1,4 @@
-"""Phase 3 entrypoint: release the best model of a dataset version.
+"""Phase 3: release the best model of a dataset version.
 
 Takes a dataset version folder — output/<version>/, holding info.json and every
 experiment trained against it — and:
@@ -90,22 +90,30 @@ def main():
     dest_uri = publish.gcs_destination(bucket, gcs_cfg.get("prefix", "models"), version)
     full = args.full or config.get("upload", {}).get("full", False)
 
+    # Dataset-level files published alongside the model. label_studio_tasks.json is the
+    # task export as downloaded, so the release carries the labels the model was trained
+    # on, not just their per-split counts.
+    version_files = []
+    for name in ("info.json", "label_studio_tasks.json"):
+        path = Path(args.data_version_dir) / name
+        if path.exists():
+            version_files.append(str(path))
+        else:
+            logger.warning(f"{name} not found in {args.data_version_dir} — not publishing it")
+    extra_files = version_files + [summary_paths["csv"], summary_paths["md"]]
+
     if args.dry_run:
-        would_upload = summarize.release_files(str(best["path"]), full=full)
+        would_upload = summarize.release_files(str(best["path"]), full=full) + extra_files
         preview = {p: f"{dest_uri}/{Path(p).name}" for p in would_upload}
         print(publish.render_release_notes(version, info, df, best, table_md, preview, metric, args.message))
-        logger.info(f"Dry run — would upload {len(would_upload)} file(s) from {best['path']} to {dest_uri}")
+        logger.info(f"Dry run — would upload {len(would_upload)} file(s) to {dest_uri}")
         return
 
-    # 3. Upload the winning run's artifacts, alongside the dataset manifest and table.
+    # 3. Upload the winning run's artifacts, alongside the dataset files and table.
     uploaded = publish.publish_to_gcs(
         run_dir=str(best["path"]),
         dest_uri=dest_uri,
-        extra_files=[
-            str(Path(args.data_version_dir) / "info.json"),
-            summary_paths["csv"],
-            summary_paths["md"],
-        ],
+        extra_files=extra_files,
         full=full,
     )
 

@@ -14,7 +14,8 @@ Includes the following steps:
 Everything for one dataset version lands under a single folder:
 
     output/<version>/info.json                       # this dataset version
-                    /raw_annotations.json            # what Label Studio returned
+                    /label_studio_tasks.json         # the task export, untouched
+                    /raw_annotations.json            # that export converted to COCO
                     /dataset/{train,valid,test}/     # what RF-DETR trains on
                     /experiment_<datetime>/          # added by the training pipeline
 """
@@ -156,9 +157,29 @@ def pull_from_label_studio(
     project_id: int,
     defect_classes: dict[int, str],
     output_path: str,
+    tasks_path: str | None = None,
 ) -> str:
-    """Pull reviewed tasks from Label Studio and write them as a COCO JSON."""
+    """Pull reviewed tasks from Label Studio and write them as a COCO JSON.
+
+    Args:
+        url: Label Studio URL
+        api_key: Label Studio API key
+        project_id: Label Studio project ID
+        defect_classes: {category_id: class_name} for the defect classes
+        output_path: where to write the COCO conversion
+        tasks_path: where to also keep the untouched task export — the labels exactly
+            as Label Studio returned them, before any conversion
+    Returns:
+        path to the COCO JSON
+    """
     tasks = pull_tasks(url, api_key, project_id)
+
+    if tasks_path:
+        os.makedirs(os.path.dirname(tasks_path) or ".", exist_ok=True)
+        with open(tasks_path, "w") as f:
+            json.dump(tasks, f, indent=2, default=str)
+        logger.info(f"Saved {len(tasks)} Label Studio tasks to {tasks_path}")
+
     coco = tasks_to_coco(tasks, defect_classes)
     _save_coco(coco, output_path)
     logger.info(
@@ -368,7 +389,8 @@ def build_dataset(
     os.makedirs(version_dir, exist_ok=True)
 
     raw_annotations_path = os.path.join(version_dir, "raw_annotations.json")
-    logger.info(f"Pulling tasks from Label Studio project {project_id} -> {raw_annotations_path}")
+    tasks_path = os.path.join(version_dir, "label_studio_tasks.json")
+    logger.info(f"Pulling tasks from Label Studio project {project_id} -> {tasks_path}")
 
     pull_from_label_studio(
         url=url,
@@ -376,6 +398,7 @@ def build_dataset(
         project_id=project_id,
         defect_classes=defect_classes,
         output_path=raw_annotations_path,
+        tasks_path=tasks_path,
     )
 
     train_path, val_path, test_path = group_by_split(

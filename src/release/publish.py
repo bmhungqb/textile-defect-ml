@@ -7,7 +7,8 @@ it came from by default:
     gs://<bucket>/<prefix>/<version>/checkpoint_best_total.pth
                                     /metrics.csv
                                     /params.json
-                                    /info.json           # the dataset version trained on
+                                    /info.json                 # the dataset version trained on
+                                    /label_studio_tasks.json   # its labels, as exported
                                     /experiments.md
                                     /experiments.csv
                                     /release.json
@@ -152,8 +153,8 @@ def publish_to_gcs(
     Args:
         run_dir: the winning run's folder (an experiment_* or trial_* directory)
         dest_uri: gs:// prefix from gcs_destination
-        extra_files: version-level files to include (info.json, experiments.csv/md,
-            release.json)
+        extra_files: version-level files to include (info.json, label_studio_tasks.json,
+            experiments.csv/md, release.json)
         full: upload the whole run folder, not just RELEASE_FILES
     Returns:
         {local_path: gs_uri} for the files that uploaded successfully

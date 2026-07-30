@@ -5,15 +5,19 @@ A dataset version folder looks like
     output/<version>/info.json
                     /dataset/
                     /experiment_<datetime>/                 # single fixed-config run
-                    /experiment_<datetime>/trial_<n>/       # one folder per Optuna trial
+                    /experiment_<datetime>_trial_<n>/       # one folder per Optuna trial
 
-Each leaf holds params.json (written by training.train.run_training) and metrics.csv
-(written by RF-DETR's CSVLogger). This module reads both into one DataFrame — one row
-per experiment run, across every experiment in the version — and renders it as the
-Markdown table that goes into the GitHub release notes.
+Each run folder holds params.json (written by training.train.run_training) and
+metrics.csv (written by RF-DETR's CSVLogger). This module reads both into one
+DataFrame — one row per run, across every experiment in the version — and renders it
+as the Markdown table that goes into the GitHub release notes.
+
+Runs from before trials were flattened (experiment_<datetime>/trial_<n>/, nested) are
+still read, so older dataset versions stay releasable.
 """
 
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -39,14 +43,38 @@ _METRIC_COLUMNS = ("mAP50", "ema_mAP50", "recall", "F1")
 _ID_COLUMNS = ("index", "experiment", "trial", "name", "path", "epoch", "epochs_run", "has_checkpoint")
 
 
+def identify_run(run_dir: Path) -> tuple[str, int | None]:
+    """Split a run folder into the experiment it belongs to and its trial number.
+
+    Handles both layouts:
+        experiment_20260730_100000_trial_3  -> ("experiment_20260730_100000", 3)
+        experiment_20260730_100000/trial_3  -> ("experiment_20260730_100000", 3)   # legacy
+        experiment_20260730_100000          -> ("experiment_20260730_100000", None)
+
+    The trailing number of a single run's timestamp is never mistaken for a trial
+    index because the split keys off the literal "_trial_" separator.
+
+    Args:
+        run_dir: a run folder
+    Returns:
+        (experiment name, trial number or None for a single fixed-config run)
+    """
+    if run_dir.name.startswith("trial_"):
+        return run_dir.parent.name, int(run_dir.name.split("_")[1])
+
+    match = re.fullmatch(r"(.+)_trial_(\d+)", run_dir.name)
+    return (match.group(1), int(match.group(2))) if match else (run_dir.name, None)
+
+
 def find_experiments(version_dir: str) -> list[Path]:
-    """List every experiment run under a dataset version, oldest experiment first.
+    """List every run under a dataset version, grouped by experiment and ordered by
+    trial number within each.
 
     Args:
         version_dir: path to output/<version>/
     Returns:
-        one path per run: the trial_<n> folders of each Optuna experiment, or the
-        experiment_<datetime> folder itself for a single fixed-config run
+        one path per run: an experiment_<datetime>_trial_<n> folder per Optuna trial,
+        or the experiment_<datetime> folder itself for a single fixed-config run
     """
     root = Path(version_dir)
     if not root.is_dir():
@@ -54,15 +82,19 @@ def find_experiments(version_dir: str) -> list[Path]:
 
     runs: list[Path] = []
     for experiment in sorted(p for p in root.iterdir() if p.is_dir() and p.name.startswith("experiment_")):
+        # Legacy layout: trials nested inside the experiment folder.
         trials = [p for p in experiment.iterdir() if p.is_dir() and p.name.startswith("trial_")]
-        if trials:
-            runs.extend(sorted(trials, key=lambda p: int(p.name.split("_")[1])))
-        else:
-            runs.append(experiment)
+        runs.extend(trials or [experiment])
 
     if not runs:
         raise FileNotFoundError(f"No experiment_* folders under {version_dir} — has anything trained yet?")
-    return runs
+
+    def sort_key(run_dir: Path) -> tuple[str, int]:
+        # Sort on the parsed trial number, so trial_10 follows trial_9, not trial_1.
+        experiment, trial = identify_run(run_dir)
+        return experiment, -1 if trial is None else trial
+
+    return sorted(runs, key=sort_key)
 
 
 def _read_params(run_dir: Path) -> dict:
@@ -123,12 +155,12 @@ def build_table(version_dir: str) -> pd.DataFrame:
     root = Path(version_dir)
     rows = []
     for index, run_dir in enumerate(find_experiments(version_dir)):
-        is_trial = run_dir.name.startswith("trial_")
+        experiment, trial = identify_run(run_dir)
         rows.append(
             {
                 "index": index,
-                "experiment": run_dir.parent.name if is_trial else run_dir.name,
-                "trial": int(run_dir.name.split("_")[1]) if is_trial else None,
+                "experiment": experiment,
+                "trial": trial,
                 "name": str(run_dir.relative_to(root)),
                 "path": str(run_dir),
                 **_read_params(run_dir),

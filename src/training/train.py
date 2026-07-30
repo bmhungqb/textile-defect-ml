@@ -30,7 +30,7 @@ def run_training(
         output_dir: path to the output directory
         weighted_dataloader: whether to use a weighted dataloader to handle class imbalance (requires training.dataloader.WeightedRFDETRDataModule)
         project_name: the name of the Weights & Biases project
-        run_name: this run's wandb run name (e.g. "run_<timestamp>" or "run_<timestamp>/trial_<n>")
+        run_name: this run's wandb run name (e.g. "experiment_<timestamp>" or "experiment_<timestamp>_trial_<n>")
         pretrain_weights: optional checkpoint to initialize from (a model-level option)
     Returns:
         path to output_dir
@@ -65,20 +65,41 @@ def run_training(
         run=run_name,
     )
 
-    if weighted_dataloader:
-        from src.training.dataloader import WeightedRFDETRDataModule
-        from rfdetr import RFDETRModelModule, build_trainer
-        from rfdetr.config import TrainConfig
+    try:
+        if weighted_dataloader:
+            from src.training.dataloader import WeightedRFDETRDataModule
+            from rfdetr import RFDETRModelModule, build_trainer
+            from rfdetr.config import TrainConfig
 
-        train_config = TrainConfig(**train_kwargs)
-        module = RFDETRModelModule(model_config=model.model_config, train_config=train_config)
-        datamodule = WeightedRFDETRDataModule(model_config=model.model_config, train_config=train_config)
-        trainer = build_trainer(train_config, model.model_config)
-        trainer.fit(module, datamodule)
-    else:
-        model.train(**train_kwargs)
+            train_config = TrainConfig(**train_kwargs)
+            module = RFDETRModelModule(model_config=model.model_config, train_config=train_config)
+            datamodule = WeightedRFDETRDataModule(model_config=model.model_config, train_config=train_config)
+            trainer = build_trainer(train_config, model.model_config)
+            trainer.fit(module, datamodule)
+        else:
+            model.train(**train_kwargs)
+    finally:
+        _finish_wandb_run()
 
     return str(Path(output_dir))
+
+
+def _finish_wandb_run() -> None:
+    """Close the active wandb run, if any.
+
+    Lightning's WandbLogger reuses wandb.run whenever one is already open, and its
+    finalize() never closes it. Inside an Optuna study every trial therefore logs
+    into trial_0's run — only the first trial shows up in wandb. Closing the run
+    after each training gives every trial its own.
+    """
+    try:
+        import wandb
+    except ModuleNotFoundError:
+        return
+
+    if wandb.run is not None:
+        logger.info(f"Closing wandb run {wandb.run.name}")
+        wandb.finish()
 
 
 def _best_epoch_objectives(output_dir: str) -> tuple[float, float, float]:
@@ -122,14 +143,6 @@ def _suggest_params(trial: optuna.trial.Trial, search_space: dict) -> dict:
             )
     return params
 
-def _wandb_run_name(config: dict, name: str) -> str:
-    """Qualify a wandb run name with the dataset version being trained on, so runs
-    from different data versions stay distinguishable in one project.
-    """
-    data_version = config.get("data_version")
-    return f"{data_version}/{name}" if data_version else name
-
-
 def train(config: dict, run_id: str) -> str:
     """Single fixed-config training run — used when use_optuna is false.
     Args:
@@ -147,7 +160,7 @@ def train(config: dict, run_id: str) -> str:
         output_dir=output_dir,
         weighted_dataloader=config.get("weighted_dataloader", False),
         project_name=config.get("project_name", "textile-defect-detection"),
-        run_name=_wandb_run_name(config, experiment_name),
+        run_name=experiment_name,
         pretrain_weights=config.get("pretrain_weights"),
     )
 
@@ -155,59 +168,40 @@ def train(config: dict, run_id: str) -> str:
 def train_with_optuna(config: dict, run_id: str) -> Path:
     """Multi-objective Optuna study over mAP50/recall/F1 — used when use_optuna is true.
 
-    Each trial lands under <output_dir>/experiment_<run_id>/trial_<n>/ — the same
-    output_dir as train(), so every experiment run against one dataset version
-    accumulates side by side under that version's folder.
+    Each trial gets its own top-level folder,
+    <output_dir>/experiment_<run_id>_trial_<n>/, a sibling of the single runs
+    train() writes — so every run against one dataset version, tuned or not, sits at
+    the same level under that version's folder.
 
     Args:
         config: the full config dict, including optuna.search_space and optuna.n_trials
-        run_id: the current run ID (e.g. a timestamp), used to name this study's subfolder
+        run_id: the current run ID (e.g. a timestamp), used to name this study's folders
     Returns:
-        the best trial's output_dir (e.g. output/<version>/experiment_<run_id>/trial_<n>/)
+        the best trial's output_dir (e.g. output/<version>/experiment_<run_id>_trial_<n>/)
     """
     optuna_cfg = config["optuna"]
     experiment_name = f"experiment_{run_id}"
-
-    search_space = optuna_cfg["search_space"]
-    trial_params = optuna_cfg.get("fixed_params")
-    if trial_params is None:
-        raise ValueError(
-            "optuna.fixed_params is missing from the training config — it holds every "
-            "TrainConfig field the search does not tune (epochs, batch_size, "
-            "grad_accum_steps, early stopping). See configs/training.yaml."
-        )
-
-    # A key in both blocks would have the tuned value silently overwritten by the fixed
-    # one (or vice versa), which is invisible in the results.
-    overlap = sorted(set(trial_params) & set(search_space))
-    if overlap:
-        raise ValueError(f"optuna.fixed_params and optuna.search_space both set: {overlap}")
+    version_dir = Path(config["output_dir"])
 
     def objective(trial: optuna.trial.Trial):
-        params = {**trial_params, **_suggest_params(trial, search_space)}
+        params = {**optuna_cfg["fixed_params"], **_suggest_params(trial, optuna_cfg["search_space"])}
 
-        trial_name = f"{experiment_name}/trial_{trial.number}"
-        output_dir = str(Path(config["output_dir"]) / trial_name)
+        trial_name = f"{experiment_name}_trial_{trial.number}"
+        output_dir = str(version_dir / trial_name)
         run_training(
             params=params,
             dataset_dir=config["dataset_dir"],
             output_dir=output_dir,
             weighted_dataloader=config.get("weighted_dataloader", False),
             project_name=config.get("project_name", "textile-defect-detection"),
-            run_name=_wandb_run_name(config, trial_name),
+            run_name=trial_name,
             pretrain_weights=config.get("pretrain_weights"),
         )
         return _best_epoch_objectives(output_dir)
 
-    # Persist the study next to the trials so a crashed or resumed search — and the
-    # release pipeline — can still read the full trial history.
-    study_dir = Path(config["output_dir"]) / experiment_name
-    study_dir.mkdir(parents=True, exist_ok=True)
     study = optuna.create_study(
         study_name=f"rfdetr-tuning-{run_id}",
         directions=["maximize", "maximize", "maximize"],
-        storage=f"sqlite:///{study_dir / 'optuna.db'}",
-        load_if_exists=True,
     )
     study.optimize(objective, n_trials=optuna_cfg["n_trials"])
 
@@ -217,6 +211,6 @@ def train_with_optuna(config: dict, run_id: str) -> Path:
     # Multi-objective: best_trials is the whole Pareto front, so its order carries no
     # ranking — pick the release candidate explicitly by F1, then mAP50.
     study_best_trial = max(study.best_trials, key=lambda t: (t.values[2], t.values[0]))
-    best_trial_folder = study_dir / f"trial_{study_best_trial.number}"
+    best_trial_folder = version_dir / f"{experiment_name}_trial_{study_best_trial.number}"
     logger.info(f"Best trial folder: {best_trial_folder}")
     return best_trial_folder
