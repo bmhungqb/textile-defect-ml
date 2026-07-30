@@ -101,8 +101,7 @@ def render_release_notes(
 
     return f"""## Model {version}
 {message_md}
-Dataset version `{info['version']}` · released from `{best['name']}`, the best of
-{len(df)} run(s) across {df['experiment'].nunique()} experiment(s), selected by highest `{metric}`.
+Dataset version `{info['version']}` · released from `{best['name']}`, the best of {len(df)} run(s) across {df['experiment'].nunique()} experiment(s), selected by highest `{metric}`.
 
 ### Metrics (best epoch, validation)
 
@@ -117,24 +116,11 @@ Built {info['created_at']} from Label Studio project {info['source'].get('projec
 {summarize.dataset_markdown(info)}
 
 ### Download
-
-```bash
-gsutil -m cp -r {dest} ./{version}
-```
-
 Weights: [`{weights_uri}`]({public_url(weights_uri)})
 
 | artifact | gs:// URI |
 | --- | --- |
 {artifacts_md}
-
-### Load
-
-```python
-from rfdetr import RFDETRMedium
-
-model = RFDETRMedium(pretrain_weights="{version}/checkpoint_best_total.pth")
-```
 
 ### All experiments
 

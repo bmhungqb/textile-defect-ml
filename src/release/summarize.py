@@ -237,19 +237,25 @@ def to_markdown(df: pd.DataFrame, best_index: int | None = None, metric: str = "
     columns = ["index", "experiment", "trial"] + varying_columns(df) + [
         c for c in ("epoch", "mAP50", "ema_mAP50", "recall", "F1") if c in df
     ]
+
     view = df[columns].copy()
     view["trial"] = view["trial"].map(lambda t: "—" if pd.isna(t) else str(int(t)))
 
-    if best_index is not None:
-        view.insert(0, "", ["**★**" if i == best_index else "" for i in df["index"]])
-
+    # Format floats
     for col in view.columns:
         if pd.api.types.is_float_dtype(view[col]):
             view[col] = view[col].map(lambda v: "—" if pd.isna(v) else f"{v:.4g}")
 
-    table = view.to_markdown(index=False)
+    # Bold the released row
     if best_index is not None:
-        table += f"\n\n★ = released model (selected by highest `{metric}`)."
+        mask = view["index"] == best_index
+        view.loc[mask] = view.loc[mask].astype(str).map(lambda x: f"**{x}**")
+
+    table = view.to_markdown(index=False)
+
+    if best_index is not None:
+        table += f"\n\n**Bold** = released model (selected by highest `{metric}`)."
+        
     return table
 
 
