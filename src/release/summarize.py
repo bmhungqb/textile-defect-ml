@@ -229,7 +229,7 @@ def to_markdown(df: pd.DataFrame, best_index: int | None = None, metric: str = "
 
     Args:
         df: table from build_table
-        best_index: index of the released run, marked with a star
+        best_index: index of the released run, whose row is rendered in bold
         metric: metric the release was selected on, noted under the table
     Returns:
         a Markdown table
